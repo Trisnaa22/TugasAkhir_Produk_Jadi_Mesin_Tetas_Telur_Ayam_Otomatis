@@ -1,0 +1,125 @@
+#include <LiquidCrystal_I2C.h>
+
+#include <Wire.h>
+
+#include <DHT.h>
+
+#define DHTPIN 4
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
+
+#define POWER_PIN  32 // ESP32 pin GPIO17 connected to sensor's VCC pin
+#define SIGNAL_PIN 35 // ESP32 pin GPIO36 (ADC0) connected to sensor's signal pin
+#define Relay1 18
+#define Relay2 19
+
+int value = 0; // variable to store the sensor value
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Alamat I2C modul LCD, dengan ukuran 16 kolom dan 2 baris
+
+void setup() {
+  Serial.begin(9600);
+  lcd.init();                      // Inisialisasi LCD
+  lcd.backlight();                 // Nyalakan backlight LCD
+  pinMode(POWER_PIN, OUTPUT);      // Konfigurasi pin sebagai OUTPUT
+  digitalWrite(POWER_PIN, LOW);    // Matikan sensor
+  pinMode(Relay1, OUTPUT);
+  pinMode(Relay2, OUTPUT);
+  Serial.println("Deteksi Suhu dan Kelembaban");
+  dht.begin();
+}
+
+void turnSensorOn() {
+  digitalWrite(POWER_PIN, HIGH);  // Hidupkan sensor
+  delay(10);                      // Tunggu 10 milidetik
+}
+
+void turnSensorOff() {
+  digitalWrite(POWER_PIN, LOW);   // Matikan sensor
+}
+
+void printSensorValue(int value) {
+  Serial.print("The water sensor value: ");
+  Serial.println(value);
+}
+
+void printTemperatureAndHumidity(int temperature, int humidity) {
+  Serial.print("Humidity: ");
+  Serial.print(humidity);
+  Serial.print(" %\t");
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.println(" *C ");
+}
+
+void controlRelays(int adjustedHumidity, int value) {
+  if (adjustedHumidity < 55) {
+    if(value < 2){
+      digitalWrite(Relay1, HIGH);
+      digitalWrite(Relay2, LOW);
+      delay(5000);
+      digitalWrite(Relay1, HIGH);
+      digitalWrite(Relay2, HIGH);
+      delay(5000);
+    }else{
+      digitalWrite(Relay1, HIGH);
+      digitalWrite(Relay2, HIGH);
+    }
+  } else if (adjustedHumidity >= 55 && adjustedHumidity <= 65) {
+    digitalWrite(Relay1, HIGH);
+    digitalWrite(Relay2, HIGH);
+  } else if (adjustedHumidity > 65) {
+      if(value < 2){
+        digitalWrite(Relay2, HIGH);
+        digitalWrite(Relay1, LOW);
+        delay(5000);
+        digitalWrite(Relay2, HIGH);
+        delay(5000);
+      }else{
+        digitalWrite(Relay1, HIGH);
+        digitalWrite(Relay2, HIGH);
+    }
+  }
+}
+
+void loop() {
+  delay(2000);
+  turnSensorOn();
+  value = analogRead(SIGNAL_PIN); // Baca nilai analog dari sensor
+  turnSensorOff();
+  int adjustedValue = value / 475;
+
+  printSensorValue(adjustedValue);
+
+  int temperature = dht.readTemperature();
+  int humidity = dht.readHumidity();
+  
+  if (isnan(humidity) || isnan(temperature)) {
+    Serial.println("Sensor tidak terbaca!");
+    return;
+  }
+  
+  int adjustedTemperature = temperature - 0.80; 
+  int adjustedHumidity = humidity - 20;
+  
+  printTemperatureAndHumidity(adjustedTemperature, adjustedHumidity);
+
+  controlRelays(adjustedHumidity, adjustedValue);
+
+  // Menampilkan data pada LCDn 
+  lcd.clear();  // Bersihkan tampilan LCD
+  
+  // Tampilkan value pada LCD
+  lcd.setCursor(0, 0);  // Pindahkan kursor ke kolom 0, baris 0
+  lcd.print("Tinggi Air: ");
+  lcd.print(adjustedValue);
+  lcd.print("cm");
+  
+  // Tampilkan adjusted humidity pada LCD
+  lcd.setCursor(0, 1);  // Pindahkan kursor ke kolom 0, baris 1
+  lcd.print("Humidity: ");
+  lcd.print(adjustedHumidity);
+  lcd.print("%");
+
+  delay(1000);
+}
